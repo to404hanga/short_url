@@ -1,0 +1,7 @@
+db:
+  user: "root"
+  password: "123456"
+  host: "127.0.0.1"
+  port: "3307"
+  database: "short_url"
+  tablePrefix: ""
