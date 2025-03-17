@@ -25,6 +25,11 @@ type lruItem struct {
 
 var _ ShortUrlRepository = (*CachedShortUrlRepository)(nil)
 
+var (
+	ErrPrimaryKeyConflict  = dao.ErrPrimaryKeyConflict
+	ErrUniqueIndexConflict = dao.ErrUniqueIndexConflict
+)
+
 func NewCachedShortUrlRepository(lruSize int, lruExpiration time.Duration, cache cache.ShortUrlCache, dao dao.ShortUrlDAO, l logger.Logger) *CachedShortUrlRepository {
 	lru, err := lru.New(lruSize)
 	if err != nil {

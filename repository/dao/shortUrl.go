@@ -3,8 +3,12 @@ package dao
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"sync"
+	"time"
 
+	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
 
@@ -13,6 +17,11 @@ type GormShortUrlDAO struct {
 }
 
 var _ ShortUrlDAO = (*GormShortUrlDAO)(nil)
+
+var (
+	ErrPrimaryKeyConflict  = errors.New("primary key conflict")
+	ErrUniqueIndexConflict = errors.New("unique index conflict")
+)
 
 func NewGormShortUrlDAO(db *gorm.DB) ShortUrlDAO {
 	return &GormShortUrlDAO{db: db}
@@ -23,7 +32,22 @@ func (g *GormShortUrlDAO) tableName(shortUrl string) string {
 }
 
 func (g *GormShortUrlDAO) Insert(ctx context.Context, su ShortUrl) error {
-	return g.db.WithContext(ctx).Table(g.tableName(su.ShortUrl)).Create(&su).Error
+	err := g.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		txt := tx.WithContext(ctx).Table(g.tableName(su.ShortUrl))
+		if err := txt.Create(&su).Error; err != nil {
+			var shortUrl ShortUrl
+			if err = txt.Where("short_url = ?", su.ShortUrl).Find(&shortUrl).Error; err != nil {
+				return err
+			}
+			if shortUrl.OriginUrl == su.OriginUrl {
+				return ErrPrimaryKeyConflict
+			} else {
+				return ErrUniqueIndexConflict
+			}
+		}
+		return nil
+	})
+	return err
 }
 
 func (g *GormShortUrlDAO) FindByShortUrlWithExpired(ctx context.Context, shortUrl string, now int64) (ShortUrl, error) {
@@ -64,27 +88,39 @@ func (g *GormShortUrlDAO) DeleteExpiredList(ctx context.Context, now int64) ([]s
 	base62 := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	var (
 		retList []string
-		err     error
+		group   errgroup.Group
+		lock    sync.Mutex
 	)
 	for i := 0; i < 62; i++ {
-		if err = g.db.Transaction(func(tx *gorm.DB) error {
-			var ret []string
+		group.Go(func() error {
 			tableName := "short_url_" + string(base62[i])
-			err := tx.WithContext(ctx).Table(tableName).Select("short_url").Where("expired_at <= ?", now).Find(&retList).Error
-			if err != nil {
-				return err
+			for {
+				var ret []string
+				// 查询可删除列表
+				err := g.db.WithContext(ctx).Table(tableName).Select("short_url").
+					Where("expired_at < ?", now).Order("expired_at ASC").Limit(100).
+					Find(&ret).Error
+				if err != nil {
+					return err
+				}
+				if len(ret) == 0 {
+					break // 无更多数据可删除
+				}
+				err = g.db.WithContext(ctx).Table(tableName).Where("short_url IN ?", ret).Delete(&ShortUrl{}).Error
+				if err != nil {
+					return err
+				}
+
+				lock.Lock()
+				retList = append(retList, ret...)
+				lock.Unlock()
+
+				time.Sleep(100 * time.Millisecond) // 避免高频操作压垮数据库
 			}
-			err = tx.WithContext(ctx).Table(tableName).Where("short_url IN ?", ret).Delete(&ShortUrl{}).Error
-			if err != nil {
-				return err
-			}
-			retList = append(retList, ret...)
 			return nil
-		}); err != nil {
-			break
-		}
+		})
 	}
-	return retList, err
+	return retList, group.Wait()
 }
 
 func (g *GormShortUrlDAO) Transaction(ctx context.Context, fc func(tx *gorm.DB) error, opts ...*sql.TxOptions) error {
