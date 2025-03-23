@@ -10,7 +10,7 @@ import (
 	"github.com/to404hanga/pkg404/logger"
 )
 
-type shortUrlService struct {
+type CachedShortUrlService struct {
 	repo    repository.ShortUrlRepository
 	l       logger.Logger
 	suffix  string
@@ -27,10 +27,10 @@ var table = map[string]int{
 	"N": 49, "O": 50, "P": 51, "Q": 52, "R": 53, "S": 54, "T": 55, "U": 56, "V": 57, "W": 58, "X": 59, "Y": 60, "Z": 61,
 }
 
-var _ ShortUrlService = (*shortUrlService)(nil)
+var _ ShortUrlService = (*CachedShortUrlService)(nil)
 
-func NewShortUrlService(repo repository.ShortUrlRepository, l logger.Logger, suffix string, weights []int) *shortUrlService {
-	return &shortUrlService{
+func NewCachedShortUrlService(repo repository.ShortUrlRepository, l logger.Logger, suffix string, weights []int) *CachedShortUrlService {
+	return &CachedShortUrlService{
 		repo:    repo,
 		l:       l,
 		suffix:  suffix,
@@ -38,7 +38,7 @@ func NewShortUrlService(repo repository.ShortUrlRepository, l logger.Logger, suf
 	}
 }
 
-func (s *shortUrlService) Create(ctx context.Context, originUrl string) (string, error) {
+func (s *CachedShortUrlService) Create(ctx context.Context, originUrl string) (string, error) {
 	baseSuffix := ""
 	for {
 		shortUrl := s.generateShortUrl(originUrl, baseSuffix)
@@ -54,16 +54,16 @@ func (s *shortUrlService) Create(ctx context.Context, originUrl string) (string,
 	}
 }
 
-func (s *shortUrlService) Redirect(ctx context.Context, shortUrl string) (string, error) {
+func (s *CachedShortUrlService) Redirect(ctx context.Context, shortUrl string) (string, error) {
 	return s.repo.GetOriginUrlByShortUrl(ctx, shortUrl)
 }
 
-func (s *shortUrlService) CleanExpired(ctx context.Context) error {
+func (s *CachedShortUrlService) CleanExpired(ctx context.Context) error {
 	now := time.Now().Unix()
 	return s.repo.CleanExpired(ctx, now)
 }
 
-func (s *shortUrlService) generateShortUrl(originUrl, suffix string) string {
+func (s *CachedShortUrlService) generateShortUrl(originUrl, suffix string) string {
 	hashed := sha256.Sum256([]byte(originUrl + suffix))
 	bytes := hashed[:]
 
@@ -107,12 +107,26 @@ func (s *shortUrlService) generateShortUrl(originUrl, suffix string) string {
 
 	// 计算校验位
 	shortUrl := string(encoded)[:6]
-	sum := 0
-	for i := 0; i < len(shortUrl); i++ {
-		sum += table[string(shortUrl[i])] * s.weights[i]
-	}
-	sum %= 62
+	sum := s.sum(shortUrl)
 	shortUrl = shortUrl[:3] + string(charset[sum]) + shortUrl[3:]
 
 	return shortUrl
+}
+
+func (s *CachedShortUrlService) CheckShortUrl(ctx context.Context, shortUrl string) bool {
+	if len(shortUrl) != 7 {
+		return false
+	}
+	expected := table[string(shortUrl[3])]
+	shortUrl = string(shortUrl[:3] + shortUrl[4:])
+	sum := s.sum(shortUrl)
+	return sum == expected
+}
+
+func (s *CachedShortUrlService) sum(shortUrl6 string) int {
+	sum := 0
+	for i := 0; i < len(shortUrl6); i++ {
+		sum += table[string(shortUrl6[i])] * s.weights[i]
+	}
+	return sum % 62
 }

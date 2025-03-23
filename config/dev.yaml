@@ -1,7 +1,34 @@
+app:
+  addr: ":8080"
+
 db:
   user: "root"
   password: "123456"
   host: "127.0.0.1"
-  port: "3307"
+  port: 3306
   database: "short_url"
   tablePrefix: ""
+  enableDBInit: true
+
+redis:
+  host: "localhost"
+  port: "6379"
+  prefix: "short_url"
+  expiration: 86400 # 24 小时，单位 秒
+
+# 如果指定了正数 size，则 percentage 不生效，否则 size 的值将由 percentage 计算得出
+lru:
+  size: 500000 # 该数值大概为 4GB 内存的 3% 所计算出的 lru size
+  percentage: 3 # lru 可使用的内存占机器最大内存的百分比，单位 %
+  expiration: 86400 # 24 小时，单位 秒
+
+log:
+  mode: dev
+  outputPaths:
+    - "./log/log.txt"
+  errorOutputPaths:
+    - "./log/error_output.txt"
+
+short_url:
+  suffix: "_TO404HANGA"
+  weights: [5, 67, 23, 71, 73, 79]

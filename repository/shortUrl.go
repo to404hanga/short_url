@@ -30,7 +30,7 @@ var (
 	ErrUniqueIndexConflict = dao.ErrUniqueIndexConflict
 )
 
-func NewCachedShortUrlRepository(lruSize int, lruExpiration time.Duration, cache cache.ShortUrlCache, dao dao.ShortUrlDAO, l logger.Logger) *CachedShortUrlRepository {
+func NewCachedShortUrlRepository(lruSize int, lruExpiration time.Duration, cache cache.ShortUrlCache, dao dao.ShortUrlDAO, l logger.Logger) ShortUrlRepository {
 	lru, err := lru.New(lruSize)
 	if err != nil {
 		panic(err)

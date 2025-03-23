@@ -32,7 +32,7 @@ func TestShortUrlService_generateShortUrl(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			s := NewShortUrlService(nil, nil, "", []int{5, 67, 23, 71, 73, 79})
+			s := NewCachedShortUrlService(nil, nil, "", []int{5, 67, 23, 71, 73, 79})
 			got := s.generateShortUrl(tc.originUrl, tc.suffix)
 			t.Log(got)
 		})

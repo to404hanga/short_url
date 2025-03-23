@@ -21,7 +21,7 @@ type ShortUrlDAO interface {
 }
 
 type ShortUrl struct {
-	ShortUrl  string `gorm:"type:char(7) CHARACTER SET ascii COLLATE ascii_bin;not null;primaryKey"`
-	OriginUrl string `gorm:"type:varchar(500) CHARACTER SET ascii COLLATE ascii_bin;not null;default '';uniqueIndex:uk_origin_url"`
-	ExpiredAt int64  `gorm:"type:bigint;default -1:index:idx_expired_at"`
+	ShortUrl  string `gorm:"type:char(7) CHARACTER SET ascii COLLATE ascii_bin;not null;primaryKey;column:short_url"`
+	OriginUrl string `gorm:"type:varchar(200) CHARACTER SET ascii COLLATE ascii_bin;not null;default '';uniqueIndex:uk_origin_url"`
+	ExpiredAt int64  `gorm:"type:bigint;default '-1':index:idx_expired_at"`
 }

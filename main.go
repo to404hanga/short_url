@@ -1,15 +1,15 @@
 package main
 
 import (
-	"short_url/ioc"
-
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
 func main() {
 	initViperWatch()
-	ioc.InitDB()
+
+	srv := Init()
+	srv.Run(viper.GetString("app.addr"))
 }
 
 func initViperWatch() {

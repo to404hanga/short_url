@@ -1,7 +1,7 @@
-package routes
+package web
 
 import "github.com/gin-gonic/gin"
 
-type Route interface {
+type Handler interface {
 	RegisterRoutes(srv *gin.Engine)
 }
