@@ -1,6 +1,7 @@
 package ioc
 
 import (
+	"context"
 	"short_url/web"
 	"short_url/web/middlewares"
 	"strings"
@@ -21,6 +22,17 @@ func InitWebServer(apiSrv *web.ApiHandler, serverSrv *web.ServerHandler, mdls []
 	return router
 }
 
+func timeout() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		if _, ok := ctx.Request.Context().Deadline(); !ok {
+			newCtx, cancel := context.WithTimeout(ctx.Request.Context(), time.Second*5)
+			defer cancel()
+			ctx.Request = ctx.Request.Clone(newCtx)
+		}
+		ctx.Next()
+	}
+}
+
 func InitGinMiddleware(l logger.Logger) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		cors.New(cors.Config{
@@ -34,6 +46,7 @@ func InitGinMiddleware(l logger.Logger) []gin.HandlerFunc {
 			},
 			MaxAge: 12 * time.Hour,
 		}),
+		timeout(),
 		middlewares.ZapLogger(l),
 	}
 }

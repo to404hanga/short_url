@@ -36,6 +36,10 @@ func (r *RedisShortUrlCache) Del(ctx context.Context, shortUrl string) error {
 	return r.cmd.Del(ctx, r.key(shortUrl)).Err()
 }
 
+func (r *RedisShortUrlCache) Refresh(ctx context.Context, shortUrl string) error {
+	return r.cmd.Expire(ctx, r.key(shortUrl), r.expiration).Err()
+}
+
 func (r *RedisShortUrlCache) key(shortUrl string) string {
 	return r.prefix + ":" + shortUrl
 }
