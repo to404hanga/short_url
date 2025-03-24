@@ -8,6 +8,7 @@ import (
 func main() {
 	initViperWatch()
 
+	Init()
 	srv := Init()
 	srv.Run(viper.GetString("app.addr"))
 }

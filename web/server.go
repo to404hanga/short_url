@@ -19,7 +19,7 @@ func NewServerHandler(svc service.ShortUrlService) *ServerHandler {
 }
 
 func (h *ServerHandler) RegisterRoutes(srv *gin.Engine) {
-	srv.GET("/:short_url")
+	srv.GET("/:short_url", h.Redirect)
 }
 
 func (h *ServerHandler) Redirect(ctx *gin.Context) {

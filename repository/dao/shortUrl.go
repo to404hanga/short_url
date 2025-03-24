@@ -5,15 +5,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"short_url/domain"
 	"sync"
 	"time"
 
+	"github.com/to404hanga/pkg404/logger"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
 
 type GormShortUrlDAO struct {
 	db *gorm.DB
+	l  logger.Logger
 }
 
 var _ ShortUrlDAO = (*GormShortUrlDAO)(nil)
@@ -21,25 +24,31 @@ var _ ShortUrlDAO = (*GormShortUrlDAO)(nil)
 var (
 	ErrPrimaryKeyConflict  = errors.New("primary key conflict")
 	ErrUniqueIndexConflict = errors.New("unique index conflict")
+	ErrDataNotFound        = gorm.ErrRecordNotFound
 )
 
-func NewGormShortUrlDAO(db *gorm.DB) ShortUrlDAO {
-	return &GormShortUrlDAO{db: db}
+func NewGormShortUrlDAO(db *gorm.DB, l logger.Logger) ShortUrlDAO {
+	return &GormShortUrlDAO{
+		db: db,
+		l:  l,
+	}
 }
 
-func (g *GormShortUrlDAO) tableName(shortUrl string) string {
-	return fmt.Sprintf("_%s", string(shortUrl[0]))
+func (g *GormShortUrlDAO) tableName(shortUrlOrSuffix string) string {
+	if len(shortUrlOrSuffix) == 1 {
+		return "short_url_" + shortUrlOrSuffix
+	}
+	return fmt.Sprintf("short_url_%s", string(shortUrlOrSuffix[0]))
 }
 
 func (g *GormShortUrlDAO) Insert(ctx context.Context, su ShortUrl) error {
 	err := g.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		txt := tx.WithContext(ctx).Table(g.tableName(su.ShortUrl))
-		if err := txt.Create(&su).Error; err != nil {
+		if tx.WithContext(ctx).Table(g.tableName(su.ShortUrl)).Create(&su).Error != nil {
 			var shortUrl ShortUrl
-			if err = txt.Where("short_url = ?", su.ShortUrl).Find(&shortUrl).Error; err != nil {
+			if err := tx.WithContext(ctx).Table(g.tableName(su.ShortUrl)).Where("short_url = ?", su.ShortUrl).Find(&shortUrl).Error; err != nil {
 				return err
 			}
-			if shortUrl.OriginUrl == su.OriginUrl {
+			if shortUrl.OriginUrl != su.OriginUrl {
 				return ErrPrimaryKeyConflict
 			} else {
 				return ErrUniqueIndexConflict
@@ -64,28 +73,220 @@ func (g *GormShortUrlDAO) FindByShortUrl(ctx context.Context, shortUrl string) (
 
 func (g *GormShortUrlDAO) FindByOriginUrlWithExpired(ctx context.Context, originUrl string, now int64) (ShortUrl, error) {
 	var su ShortUrl
-	err := g.db.WithContext(ctx).Where("origin_url =?", originUrl).Where("expired_at > ?", now).First(&su).Error
-	return su, err
+	newCtx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+	var wg sync.WaitGroup
+	wg.Add(62)
+	for i := 0; i < 62; i++ {
+		go func(internalCtx context.Context, suffix string) {
+			defer wg.Done()
+			select {
+			case <-internalCtx.Done():
+				return
+			default:
+				var internalSu ShortUrl
+				if err := g.db.WithContext(internalCtx).
+					Table(g.tableName(suffix)).
+					Where("origin_url = ?", originUrl).
+					Where("expired_at > ?", now).
+					First(&internalSu).Error; err == nil {
+					su = internalSu
+					cancel()
+				}
+			}
+		}(newCtx, string(domain.BASE62CHARSET[i]))
+	}
+	wg.Wait()
+	if su.ShortUrl == "" {
+		return ShortUrl{}, ErrDataNotFound
+	}
+	return su, nil
+}
+
+func (g *GormShortUrlDAO) FindByOriginUrlWithExpiredV1(ctx context.Context, originUrl string, now int64) (ShortUrl, error) {
+	var (
+		su   ShortUrl
+		lock sync.Mutex
+	)
+	g.executeUnshardedQuery(ctx, func(iCtx context.Context, suffix string, db *gorm.DB) error {
+		var internalSu ShortUrl
+		if err := db.WithContext(iCtx).
+			Table(g.tableName(suffix)).
+			Where("origin_url =?", originUrl).
+			Where("expired_at >?", now).
+			First(&internalSu).Error; err != nil {
+			g.l.Error("FindByOriginUrlWithExpiredV1 failed",
+				logger.Error(err),
+				logger.String("suffix", suffix),
+				logger.String("origin_url", originUrl),
+				logger.Int64("expired_at", now),
+			)
+			return err
+		}
+		lock.Lock()
+		su = internalSu
+		lock.Unlock()
+		return nil
+	})
+	if su.ShortUrl == "" {
+		return ShortUrl{}, ErrDataNotFound
+	}
+	return su, nil
 }
 
 func (g *GormShortUrlDAO) FindByOriginUrl(ctx context.Context, originUrl string) (ShortUrl, error) {
 	var su ShortUrl
-	err := g.db.WithContext(ctx).Where("origin_url =?", originUrl).First(&su).Error
-	return su, err
+	newCtx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+	var wg sync.WaitGroup
+	wg.Add(62)
+	for i := 0; i < 62; i++ {
+		go func(internalCtx context.Context, suffix string) {
+			defer wg.Done()
+			select {
+			case <-internalCtx.Done():
+				return
+			default:
+				var internalSu ShortUrl
+				if err := g.db.WithContext(internalCtx).
+					Table(g.tableName(suffix)).
+					Where("origin_url = ?", originUrl).
+					First(&internalSu).Error; err == nil {
+					su = internalSu
+					cancel()
+				}
+			}
+		}(newCtx, string(domain.BASE62CHARSET[i]))
+	}
+	wg.Wait()
+	if su.ShortUrl == "" {
+		return ShortUrl{}, ErrDataNotFound
+	}
+	return su, nil
+}
+
+func (g *GormShortUrlDAO) FindByOriginUrlV1(ctx context.Context, originUrl string) (ShortUrl, error) {
+	var (
+		su   ShortUrl
+		lock sync.Mutex
+	)
+	g.executeUnshardedQuery(ctx, func(iCtx context.Context, suffix string, db *gorm.DB) error {
+		var internalSu ShortUrl
+		if err := db.WithContext(iCtx).
+			Table(g.tableName(suffix)).
+			Where("origin_url =?", originUrl).
+			First(&internalSu).Error; err != nil {
+			g.l.Error("FindByOriginUrlV1 failed",
+				logger.Error(err),
+				logger.String("suffix", suffix),
+				logger.String("origin_url", originUrl),
+			)
+			return err
+		}
+		lock.Lock()
+		su = internalSu
+		lock.Unlock()
+		return nil
+	})
+	if su.ShortUrl == "" {
+		return ShortUrl{}, ErrDataNotFound
+	}
+	return su, nil
 }
 
 func (g *GormShortUrlDAO) FindExpiredList(ctx context.Context, now int64) ([]ShortUrl, error) {
-	var sus []ShortUrl
-	err := g.db.WithContext(ctx).Where("expired_at <= ?", now).Find(&sus).Error
-	return sus, err
+	var (
+		sus  []ShortUrl
+		wg   sync.WaitGroup
+		lock sync.Mutex
+	)
+	newCtx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+	wg.Add(62)
+	for i := 0; i < 62; i++ {
+		go func(internalCtx context.Context, suffix string) {
+			defer wg.Done()
+			select {
+			case <-internalCtx.Done():
+				return
+			default:
+				var internalSus []ShortUrl
+				if err := g.db.WithContext(internalCtx).
+					Table(g.tableName(suffix)).
+					Where("expired_at <=?", now).
+					Find(&internalSus).Error; err == nil {
+					lock.Lock()
+					sus = append(sus, internalSus...)
+					lock.Unlock()
+					cancel()
+				}
+			}
+		}(newCtx, string(domain.BASE62CHARSET[i]))
+	}
+	wg.Wait()
+	if len(sus) == 0 {
+		return nil, ErrDataNotFound
+	}
+	return sus, nil
+}
+
+func (g *GormShortUrlDAO) FindExpiredListV1(ctx context.Context, now int64) ([]ShortUrl, error) {
+	var (
+		sus  []ShortUrl
+		lock sync.Mutex
+	)
+	g.executeUnshardedQuery(ctx, func(iCtx context.Context, suffix string, db *gorm.DB) error {
+		var internalSus []ShortUrl
+		err := db.WithContext(iCtx).
+			Table(g.tableName(suffix)).
+			Where("expired_at <=?", now).
+			Find(&internalSus).Error
+		if err != nil {
+			g.l.Error("FindExpiredListV1 failed",
+				logger.Error(err),
+				logger.String("suffix", suffix),
+				logger.Int64("expired_at", now),
+			)
+			return err
+		}
+		lock.Lock()
+		sus = append(sus, internalSus...)
+		lock.Unlock()
+		return nil
+	})
+	if len(sus) == 0 {
+		return nil, ErrDataNotFound
+	}
+	return sus, nil
+}
+
+// 批量执行不分表操作的抽象方法
+func (g *GormShortUrlDAO) executeUnshardedQuery(ctx context.Context, fn func(iCtx context.Context, suffix string, db *gorm.DB) error) {
+	var wg sync.WaitGroup
+	newCtx, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+	wg.Add(62)
+	for i := 0; i < 62; i++ {
+		go func(internalCtx context.Context, suffix string) {
+			defer wg.Done()
+			select {
+			case <-internalCtx.Done():
+				return
+			default:
+				if err := fn(internalCtx, suffix, g.db); err == nil {
+					cancel()
+				}
+			}
+		}(newCtx, string(domain.BASE62CHARSET[i]))
+	}
+	wg.Wait()
 }
 
 func (g *GormShortUrlDAO) DeleteByShortUrl(ctx context.Context, shortUrl string) error {
-	return g.db.WithContext(ctx).Where("short_url = ?", shortUrl).Delete(&ShortUrl{}).Error
+	return g.db.WithContext(ctx).Table(g.tableName(shortUrl)).Where("short_url = ?", shortUrl).Delete(&ShortUrl{}).Error
 }
 
 func (g *GormShortUrlDAO) DeleteExpiredList(ctx context.Context, now int64) ([]string, error) {
-	base62 := "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	var (
 		retList []string
 		group   errgroup.Group
@@ -93,7 +294,7 @@ func (g *GormShortUrlDAO) DeleteExpiredList(ctx context.Context, now int64) ([]s
 	)
 	for i := 0; i < 62; i++ {
 		group.Go(func() error {
-			tableName := "short_url_" + string(base62[i])
+			tableName := "short_url_" + string(domain.BASE62CHARSET[i])
 			for {
 				var ret []string
 				// 查询可删除列表

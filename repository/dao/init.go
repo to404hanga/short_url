@@ -1,8 +1,6 @@
 package dao
 
 import (
-	"log"
-
 	"gorm.io/gorm"
 )
 
@@ -17,11 +15,11 @@ func InitTables(db *gorm.DB) {
 	// 	ExpiredAt: -1,
 	// })
 
-	// 不可行
-	log.Println("不可行")
-	db.Create(&ShortUrl{
-		ShortUrl:  "bbcdef",
-		OriginUrl: "http://example.com",
-		ExpiredAt: -1,
-	})
+	// // 不可行
+	// log.Println("不可行")
+	// db.Create(&ShortUrl{
+	// 	ShortUrl:  "bbcdef",
+	// 	OriginUrl: "http://example.com",
+	// 	ExpiredAt: -1,
+	// })
 }

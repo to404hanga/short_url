@@ -39,9 +39,8 @@ func InitDB() *gorm.DB {
 		panic(err)
 	}
 	db.Use(sharding.Register(sharding.Config{
-		ShardingKey:         "short_url",
-		NumberOfShards:      62,
-		PrimaryKeyGenerator: sharding.PKCustom,
+		ShardingKey:    "short_url",
+		NumberOfShards: 62,
 		ShardingAlgorithm: func(columnValue any) (suffix string, err error) {
 			key, ok := columnValue.(string)
 			if !ok {

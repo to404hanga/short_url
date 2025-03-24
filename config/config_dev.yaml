@@ -8,7 +8,7 @@ db:
   port: 3306
   database: "short_url"
   tablePrefix: ""
-  enableDBInit: true
+  enableDBInit: false # 是否需要初始化数据库
 
 redis:
   host: "localhost"
