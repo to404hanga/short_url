@@ -14,9 +14,9 @@ import (
 func InitWebServer(apiSrv *web.ApiHandler, serverSrv *web.ServerHandler, mdls []gin.HandlerFunc) *gin.Engine {
 	router := gin.Default()
 
+	router.Use(mdls...)
 	apiSrv.RegisterRoutes(router)
 	serverSrv.RegisterRoutes(router)
-	router.Use(mdls...)
 
 	return router
 }
