@@ -7,7 +7,6 @@
 package main
 
 import (
-	"github.com/gin-gonic/gin"
 	"short_url/ioc"
 	"short_url/repository/dao"
 	"short_url/web"
@@ -15,16 +14,23 @@ import (
 
 // Injectors from wire.go:
 
-func Init() *gin.Engine {
+func Init() *App {
 	cmdable := ioc.InitRedis()
 	shortUrlCache := ioc.InitRedisCache(cmdable)
-	db := ioc.InitDB()
 	logger := ioc.InitLogger()
+	db := ioc.InitDB(logger)
 	shortUrlDAO := dao.NewGormShortUrlDAO(db, logger)
 	shortUrlRepository := ioc.InitCachedRepository(shortUrlCache, shortUrlDAO, logger)
 	shortUrlService := ioc.InitService(shortUrlRepository, logger)
 	apiHandler := web.NewApiHandler(shortUrlService)
 	serverHandler := web.NewServerHandler(shortUrlService)
-	engine := ioc.InitWebServer(apiHandler, serverHandler)
-	return engine
+	v := ioc.InitGinMiddleware(logger)
+	engine := ioc.InitWebServer(apiHandler, serverHandler, v)
+	job := ioc.InitCleanerJob(shortUrlService)
+	cron := ioc.InitJobs(logger, job)
+	app := &App{
+		server: engine,
+		cron:   cron,
+	}
+	return app
 }

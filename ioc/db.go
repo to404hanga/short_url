@@ -4,23 +4,27 @@ import (
 	"fmt"
 	"log"
 	"short_url/repository/dao"
+	"time"
 
 	"github.com/spf13/viper"
+	"github.com/to404hanga/pkg404/logger"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	glogger "gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 	"gorm.io/sharding"
 )
 
-func InitDB() *gorm.DB {
+func InitDB(l logger.Logger) *gorm.DB {
 	type Config struct {
-		User         string `yaml:"user"`
-		Password     string `yaml:"password"`
-		Host         string `yaml:"host"`
-		Port         int    `yaml:"port"`
-		Database     string `yaml:"database"`
-		TablePrefix  string `yaml:"tablePrefix"`
-		EnableDBInit bool   `yaml:"enableDBInit"`
+		User          string `yaml:"user"`
+		Password      string `yaml:"password"`
+		Host          string `yaml:"host"`
+		Port          int    `yaml:"port"`
+		Database      string `yaml:"database"`
+		TablePrefix   string `yaml:"tablePrefix"`
+		EnableDBInit  bool   `yaml:"enableDBInit"`
+		SlowThreshold int64  `yaml:"slowThreshold"`
 	}
 	var cfg Config
 	err := viper.UnmarshalKey("db", &cfg)
@@ -34,6 +38,10 @@ func InitDB() *gorm.DB {
 			SingularTable: true,
 			TablePrefix:   cfg.TablePrefix,
 		},
+		Logger: glogger.New(gormLoggerFunc(l.Debug), glogger.Config{
+			SlowThreshold: time.Duration(cfg.SlowThreshold) * time.Nanosecond, // 单位 ns
+			LogLevel:      glogger.Info,
+		}),
 	})
 	if err != nil {
 		panic(err)
@@ -73,4 +81,11 @@ func InitDB() *gorm.DB {
 	}
 
 	return db
+}
+
+type gormLoggerFunc func(msg string, fields ...logger.Field)
+
+func (g gormLoggerFunc) Printf(s string, i ...interface{}) {
+	// g(s, logger.Field{Key: "args", Val: i})
+	g(fmt.Sprintf(s, i...))
 }

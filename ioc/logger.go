@@ -27,7 +27,10 @@ func InitLogger() logger.Logger {
 	cfg.OutputPaths = append(cfg.OutputPaths, outputPaths...)
 	cfg.ErrorOutputPaths = append(cfg.ErrorOutputPaths, errorOutputPaths...)
 
-	l, err := cfg.Build(zap.AddStacktrace(zap.ErrorLevel))
+	l, err := cfg.Build(
+		zap.AddStacktrace(zap.ErrorLevel),
+		zap.AddCallerSkip(1),
+	)
 	if err != nil {
 		panic(err)
 	}

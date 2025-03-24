@@ -9,6 +9,7 @@ db:
   database: "short_url"
   tablePrefix: ""
   enableDBInit: false # 是否需要初始化数据库
+  slowThreshold: 200000000 # 查询时间大于该值的则为慢 sql，单位 ns
 
 redis:
   host: "localhost"
@@ -32,3 +33,8 @@ log:
 short_url:
   suffix: "_TO404HANGA"
   weights: [5, 67, 23, 71, 73, 79]
+
+job:
+  timeout: 30
+  expr: "0 0 4 * * *" # 每天凌晨 4 点执行定时任务
+  enabled: true

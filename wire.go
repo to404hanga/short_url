@@ -7,11 +7,10 @@ import (
 	"short_url/repository/dao"
 	"short_url/web"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/wire"
 )
 
-func Init() *gin.Engine {
+func Init() *App {
 	wire.Build(
 		ioc.InitDB,
 		ioc.InitLogger,
@@ -26,7 +25,12 @@ func Init() *gin.Engine {
 		web.NewApiHandler,
 		web.NewServerHandler,
 
+		ioc.InitCleanerJob,
+		ioc.InitJobs,
+		ioc.InitGinMiddleware,
 		ioc.InitWebServer,
+
+		wire.Struct(new(App), "*"),
 	)
-	return gin.Default()
+	return new(App)
 }

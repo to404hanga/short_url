@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/gin-gonic/gin"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
@@ -8,9 +9,18 @@ import (
 func main() {
 	initViperWatch()
 
-	Init()
-	srv := Init()
-	srv.Run(viper.GetString("app.addr"))
+	app := Init()
+
+	app.cron.Start()
+	defer func() {
+		<-app.cron.Stop().Done()
+	}()
+
+	server := app.server
+	server.GET("/ping", func(ctx *gin.Context) {
+		ctx.String(200, "pong")
+	})
+	server.Run(viper.GetString("app.addr"))
 }
 
 func initViperWatch() {

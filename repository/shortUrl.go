@@ -65,16 +65,19 @@ func (c *CachedShortUrlRepository) GetOriginUrlByShortUrl(ctx context.Context, s
 		return "", err
 	}
 
+	newCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
 	go func() {
+		defer cancel()
+
 		// 异步更新redis缓存
-		if err = c.cache.Set(ctx, shortUrl, su.OriginUrl); err != nil {
+		if err = c.cache.Set(newCtx, shortUrl, su.OriginUrl); err != nil {
 			c.l.Error("failed to set redis cache",
 				logger.Error(err),
 				logger.String("short_url", shortUrl),
 				logger.String("origin_url", su.OriginUrl),
 			)
 		}
-		// 异步更新本地lru缓存
+		// 异步更新本地 lru 缓存
 		c.lru.Add(shortUrl, lruItem{
 			originUrl: su.OriginUrl,
 			expiredAt: int64(c.lruExpiration.Seconds()),
@@ -95,15 +98,18 @@ func (c *CachedShortUrlRepository) InsertShortUrl(ctx context.Context, shortUrl,
 func (c *CachedShortUrlRepository) DeleteShortUrlByShortUrl(ctx context.Context, shortUrl string) error {
 	err := c.dao.DeleteByShortUrl(ctx, shortUrl)
 	if err == nil {
+		newCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
 		go func() {
-			// 异步删除redis缓存
-			if err = c.cache.Del(ctx, shortUrl); err != nil {
+			defer cancel()
+
+			// 异步删除 redis 缓存
+			if err = c.cache.Del(newCtx, shortUrl); err != nil {
 				c.l.Error("failed to delete redis cache",
 					logger.Error(err),
 					logger.String("short_url", shortUrl),
 				)
 			}
-			// 异步删除本地lru缓存
+			// 异步删除本地 lru 缓存
 			c.lru.Remove(shortUrl)
 		}()
 	}
@@ -113,16 +119,18 @@ func (c *CachedShortUrlRepository) DeleteShortUrlByShortUrl(ctx context.Context,
 func (c *CachedShortUrlRepository) CleanExpired(ctx context.Context, now int64) error {
 	deleteList, err := c.dao.DeleteExpiredList(ctx, now)
 	if err == nil {
+		newCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		go func() {
+			defer cancel()
 			for _, shortUrl := range deleteList {
-				// 异步删除redis缓存
-				if err = c.cache.Del(ctx, shortUrl); err != nil {
+				// 异步删除 redis 缓存
+				if err = c.cache.Del(newCtx, shortUrl); err != nil {
 					c.l.Error("failed to delete redis cache",
 						logger.Error(err),
 						logger.String("short_url", shortUrl),
 					)
 				}
-				// 异步删除本地lru缓存
+				// 异步删除本地 lru 缓存
 				c.lru.Remove(shortUrl)
 			}
 		}()
