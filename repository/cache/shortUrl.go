@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"math/rand/v2"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -28,7 +29,7 @@ func (r *RedisShortUrlCache) Get(ctx context.Context, shortUrl string) (originUr
 }
 
 func (r *RedisShortUrlCache) Set(ctx context.Context, shortUrl string, originUrl string) error {
-	_, err := r.cmd.Set(ctx, r.key(shortUrl), originUrl, r.expiration).Result()
+	_, err := r.cmd.Set(ctx, r.key(shortUrl), originUrl, r.expiration+time.Duration(rand.IntN(7201)-3600)).Result() // 随机加减一小时过期时间
 	return err
 }
 
@@ -37,7 +38,7 @@ func (r *RedisShortUrlCache) Del(ctx context.Context, shortUrl string) error {
 }
 
 func (r *RedisShortUrlCache) Refresh(ctx context.Context, shortUrl string) error {
-	return r.cmd.Expire(ctx, r.key(shortUrl), r.expiration).Err()
+	return r.cmd.Expire(ctx, r.key(shortUrl), r.expiration+time.Duration(rand.IntN(7201)-3600)).Err() // 随机加减一小时过期时间
 }
 
 func (r *RedisShortUrlCache) key(shortUrl string) string {

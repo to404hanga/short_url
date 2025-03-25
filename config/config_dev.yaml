@@ -1,8 +1,5 @@
 app:
   addr: ":8080"
-  downgrade: true # 降级
-  limited: false # 限流
-  break: false # 熔断
 
 db:
   user: "root"
@@ -24,7 +21,7 @@ redis:
 lru:
   size: 500000 # 该数值大概为 4GB 内存的 3% 所计算出的 lru size
   percentage: 3 # lru 可使用的内存占机器最大内存的百分比，单位 %
-  expiration: 300 # 5 分钟，单位 秒
+  expiration: 28800 # 8 小时，单位 秒
 
 log:
   mode: dev
