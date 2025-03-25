@@ -3,7 +3,6 @@ package ioc
 import (
 	"context"
 	"short_url/web"
-	"short_url/web/middlewares"
 	"strings"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 
 func InitWebServer(apiSrv *web.ApiHandler, serverSrv *web.ServerHandler, mdls []gin.HandlerFunc) *gin.Engine {
 	router := gin.Default()
+	router.MaxMultipartMemory = 1024 * 1024 * 1024 * 2
 
 	router.Use(mdls...)
 	apiSrv.RegisterRoutes(router)
@@ -22,6 +22,7 @@ func InitWebServer(apiSrv *web.ApiHandler, serverSrv *web.ServerHandler, mdls []
 	return router
 }
 
+// 强制给每个请求 5 秒超时时间
 func timeout() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		if _, ok := ctx.Request.Context().Deadline(); !ok {
@@ -47,6 +48,6 @@ func InitGinMiddleware(l logger.Logger) []gin.HandlerFunc {
 			MaxAge: 12 * time.Hour,
 		}),
 		timeout(),
-		middlewares.ZapLogger(l),
+		// middlewares.ZapLogger(l),
 	}
 }

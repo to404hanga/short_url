@@ -20,6 +20,7 @@ func InitLogger() logger.Logger {
 		panic("invalid log mode")
 	}
 
+	// 将输出路径加入到 zap 配置中
 	outputPaths := viper.GetStringSlice("log.outputPaths")
 	errorOutputPaths := viper.GetStringSlice("log.errorOutputPaths")
 	logfile.InitLogFilePath(outputPaths...)
@@ -28,7 +29,7 @@ func InitLogger() logger.Logger {
 	cfg.ErrorOutputPaths = append(cfg.ErrorOutputPaths, errorOutputPaths...)
 
 	l, err := cfg.Build(
-		zap.AddStacktrace(zap.ErrorLevel),
+		zap.AddStacktrace(zap.ErrorLevel), // Error 级别日志携带 stack trace
 		zap.AddCallerSkip(1),
 	)
 	if err != nil {

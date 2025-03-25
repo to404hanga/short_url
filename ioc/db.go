@@ -3,6 +3,7 @@ package ioc
 import (
 	"fmt"
 	"log"
+	"short_url/domain"
 	"short_url/repository/dao"
 	"time"
 
@@ -17,14 +18,15 @@ import (
 
 func InitDB(l logger.Logger) *gorm.DB {
 	type Config struct {
-		User          string `yaml:"user"`
-		Password      string `yaml:"password"`
-		Host          string `yaml:"host"`
-		Port          int    `yaml:"port"`
-		Database      string `yaml:"database"`
-		TablePrefix   string `yaml:"tablePrefix"`
-		EnableDBInit  bool   `yaml:"enableDBInit"`
-		SlowThreshold int64  `yaml:"slowThreshold"`
+		User                   string `yaml:"user"`
+		Password               string `yaml:"password"`
+		Host                   string `yaml:"host"`
+		Port                   int    `yaml:"port"`
+		Database               string `yaml:"database"`
+		TablePrefix            string `yaml:"tablePrefix"`
+		EnableDBInit           bool   `yaml:"enableDBInit"`
+		SlowThreshold          int64  `yaml:"slowThreshold"`
+		SkipDefaultTransaction bool   `yaml:"skipDefaultTransaction"`
 	}
 	var cfg Config
 	err := viper.UnmarshalKey("db", &cfg)
@@ -34,9 +36,9 @@ func InitDB(l logger.Logger) *gorm.DB {
 
 	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s", cfg.User, cfg.Password, cfg.Host, cfg.Port, cfg.Database)
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-		SkipDefaultTransaction: true,
+		SkipDefaultTransaction: cfg.SkipDefaultTransaction,
 		NamingStrategy: schema.NamingStrategy{
-			SingularTable: true,
+			SingularTable: true, // 单数形式表名
 			TablePrefix:   cfg.TablePrefix,
 		},
 		Logger: glogger.New(gormLoggerFunc(l.Debug), glogger.Config{
@@ -47,9 +49,12 @@ func InitDB(l logger.Logger) *gorm.DB {
 	if err != nil {
 		panic(err)
 	}
+
+	// 注册分表中间件
 	db.Use(sharding.Register(sharding.Config{
-		ShardingKey:    "short_url",
-		NumberOfShards: 62,
+		ShardingKey:    "short_url", // 分表键
+		NumberOfShards: 62,          // 分表总数
+		// 分表算法，按首字符分表
 		ShardingAlgorithm: func(columnValue any) (suffix string, err error) {
 			key, ok := columnValue.(string)
 			if !ok {
@@ -59,22 +64,17 @@ func InitDB(l logger.Logger) *gorm.DB {
 			suffix = fmt.Sprintf("_%s", firstChar)
 			return suffix, nil
 		},
+		// 分表后缀
 		ShardingSuffixs: func() (suffixs []string) {
-			return []string{
-				"_0", "_1", "_2", "_3", "_4", "_5", "_6", "_7", "_8", "_9",
-				"_A", "_B", "_C", "_D", "_E", "_F", "_G", "_H", "_I", "_J", "_K", "_L", "_M",
-				"_N", "_O", "_P", "_Q", "_R", "_S", "_T", "_U", "_V", "_W", "_X", "_Y", "_Z",
-				"_a", "_b", "_c", "_d", "_e", "_f", "_g", "_h", "_i", "_j", "_k", "_l", "_m",
-				"_n", "_o", "_p", "_q", "_r", "_s", "_t", "_u", "_v", "_w", "_x", "_y", "_z",
-				// "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
-				// "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
-				// "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
-				// "a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m",
-				// "n", "o", "p", "q", "r", "s", "t", "u", "v", "w", "x", "y", "z",
+			ret := make([]string, len(domain.BASE62CHARSET))
+			for i, char := range domain.BASE62CHARSET {
+				ret[i] = fmt.Sprintf("_%s", string(char))
 			}
+			return ret
 		},
 	}, "short_url"))
 
+	// 通过配置文件决定启动时是否初始化数据库
 	if cfg.EnableDBInit {
 		log.Println("Starting database initialization...")
 		dao.InitTables(db)
@@ -87,6 +87,5 @@ func InitDB(l logger.Logger) *gorm.DB {
 type gormLoggerFunc func(msg string, fields ...logger.Field)
 
 func (g gormLoggerFunc) Printf(s string, i ...interface{}) {
-	// g(s, logger.Field{Key: "args", Val: i})
 	g(fmt.Sprintf(s, i...))
 }

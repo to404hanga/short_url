@@ -10,6 +10,7 @@ db:
   tablePrefix: ""
   enableDBInit: false # 是否需要初始化数据库
   slowThreshold: 200000000 # 查询时间大于该值的则为慢 sql，单位 ns
+  skipDefaultTransaction: false # 默认不开启事务
 
 redis:
   host: "localhost"
