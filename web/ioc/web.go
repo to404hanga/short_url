@@ -2,7 +2,7 @@ package ioc
 
 import (
 	"context"
-	"short_url/web"
+	"short_url/web/routes"
 	"strings"
 	"time"
 
@@ -11,13 +11,13 @@ import (
 	"github.com/to404hanga/pkg404/logger"
 )
 
-func InitWebServer(apiSrv *web.ApiHandler, serverSrv *web.ServerHandler, mdls []gin.HandlerFunc) *gin.Engine {
+func InitWebServer(mdls []gin.HandlerFunc, api *routes.ApiHandler, server *routes.ServerHandler) *gin.Engine {
 	router := gin.Default()
 	router.MaxMultipartMemory = 1024 * 1024 * 1024 * 2
 
 	router.Use(mdls...)
-	apiSrv.RegisterRoutes(router)
-	serverSrv.RegisterRoutes(router)
+	api.RegisterRoutes(router)
+	server.RegisterRoutes(router)
 
 	return router
 }

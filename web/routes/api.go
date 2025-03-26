@@ -1,18 +1,18 @@
-package web
+package routes
 
 import (
-	"short_url/service"
+	short_url_v1 "short_url/proto/short_url/v1"
 
 	"github.com/gin-gonic/gin"
 )
 
 type ApiHandler struct {
-	svc service.ShortUrlService
+	svc short_url_v1.ShortUrlServiceClient
 }
 
 var _ Handler = (*ApiHandler)(nil)
 
-func NewApiHandler(svc service.ShortUrlService) *ApiHandler {
+func NewApiHandler(svc short_url_v1.ShortUrlServiceClient) *ApiHandler {
 	return &ApiHandler{
 		svc: svc,
 	}
@@ -35,12 +35,14 @@ func (h *ApiHandler) Create(ctx *gin.Context) {
 		return
 	}
 
-	shortUrl, err := h.svc.Create(ctx.Request.Context(), req.OriginUrl)
+	resp, err := h.svc.GenerateShortUrl(ctx, &short_url_v1.GenerateShortUrlRequest{
+		OriginUrl: req.OriginUrl,
+	})
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 	ctx.JSON(200, gin.H{
-		"short_url": shortUrl,
+		"short_url": resp.GetShortUrl(),
 	})
 }
