@@ -3,7 +3,6 @@ package generator
 import (
 	"crypto/sha256"
 	"math/big"
-	"short_url/rpc/domain"
 )
 
 func GenerateShortUrl(originUrl, suffix string, weights []int) string {
@@ -35,7 +34,7 @@ func GenerateShortUrl(originUrl, suffix string, weights []int) string {
 	for num.Cmp(zero) > 0 {
 		mod := new(big.Int)
 		num.DivMod(num, base, mod)
-		encoded = append(encoded, domain.BASE62CHARSET[mod.Int64()])
+		encoded = append(encoded, BASE62CHARSET[mod.Int64()])
 	}
 
 	// 反转字符顺序
@@ -51,7 +50,7 @@ func GenerateShortUrl(originUrl, suffix string, weights []int) string {
 	// 计算校验位
 	shortUrl := string(encoded)[:6]
 	sum := sum(shortUrl, weights)
-	shortUrl = shortUrl[:3] + string(domain.BASE62CHARSET[sum]) + shortUrl[3:]
+	shortUrl = shortUrl[:3] + string(BASE62CHARSET[sum]) + shortUrl[3:]
 
 	return shortUrl
 }
@@ -60,7 +59,7 @@ func CheckShortUrl(shortUrl string, weights []int) bool {
 	if len(shortUrl) != 7 {
 		return false
 	}
-	expected := domain.Base62NumberTable[string(shortUrl[3])]
+	expected := Base62NumberTable[string(shortUrl[3])]
 	shortUrl = string(shortUrl[:3] + shortUrl[4:])
 	sum := sum(shortUrl, weights)
 	return sum == expected
@@ -69,7 +68,7 @@ func CheckShortUrl(shortUrl string, weights []int) bool {
 func sum(shortUrl6 string, weights []int) int {
 	sum := 0
 	for i := 0; i < len(shortUrl6); i++ {
-		sum += domain.Base62NumberTable[string(shortUrl6[i])] * weights[i]
+		sum += Base62NumberTable[string(shortUrl6[i])] * weights[i]
 	}
 	return sum % 62
 }

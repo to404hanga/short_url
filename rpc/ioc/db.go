@@ -3,7 +3,7 @@ package ioc
 import (
 	"fmt"
 	"log"
-	"short_url/rpc/domain"
+	"short_url/pkg/generator"
 	"short_url/rpc/repository/dao"
 	"time"
 
@@ -66,8 +66,8 @@ func InitDB(l logger.Logger) *gorm.DB {
 		},
 		// 分表后缀
 		ShardingSuffixs: func() (suffixs []string) {
-			ret := make([]string, len(domain.BASE62CHARSET))
-			for i, char := range domain.BASE62CHARSET {
+			ret := make([]string, len(generator.BASE62CHARSET))
+			for i, char := range generator.BASE62CHARSET {
 				ret[i] = fmt.Sprintf("_%s", string(char))
 			}
 			return ret

@@ -1,4 +1,4 @@
-package domain
+package generator
 
 const BASE62CHARSET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 

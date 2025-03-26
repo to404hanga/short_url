@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"short_url/rpc/domain"
+	"short_url/pkg/generator"
 	"sync"
 	"time"
 
@@ -94,7 +94,7 @@ func (g *GormShortUrlDAO) FindByOriginUrlWithExpired(ctx context.Context, origin
 					cancel()
 				}
 			}
-		}(newCtx, string(domain.BASE62CHARSET[i]))
+		}(newCtx, string(generator.BASE62CHARSET[i]))
 	}
 	wg.Wait()
 	if su.ShortUrl == "" {
@@ -156,7 +156,7 @@ func (g *GormShortUrlDAO) FindByOriginUrl(ctx context.Context, originUrl string)
 					cancel()
 				}
 			}
-		}(newCtx, string(domain.BASE62CHARSET[i]))
+		}(newCtx, string(generator.BASE62CHARSET[i]))
 	}
 	wg.Wait()
 	if su.ShortUrl == "" {
@@ -221,7 +221,7 @@ func (g *GormShortUrlDAO) FindExpiredList(ctx context.Context, now int64) ([]Sho
 					cancel()
 				}
 			}
-		}(newCtx, string(domain.BASE62CHARSET[i]))
+		}(newCtx, string(generator.BASE62CHARSET[i]))
 	}
 	wg.Wait()
 	if len(sus) == 0 {
@@ -277,7 +277,7 @@ func (g *GormShortUrlDAO) executeUnshardedQuery(ctx context.Context, fn func(iCt
 					cancel()
 				}
 			}
-		}(newCtx, string(domain.BASE62CHARSET[i]))
+		}(newCtx, string(generator.BASE62CHARSET[i]))
 	}
 	wg.Wait()
 }
@@ -294,7 +294,7 @@ func (g *GormShortUrlDAO) DeleteExpiredList(ctx context.Context, now int64) ([]s
 	)
 	for i := 0; i < 62; i++ {
 		group.Go(func() error {
-			tableName := "short_url_" + string(domain.BASE62CHARSET[i])
+			tableName := "short_url_" + string(generator.BASE62CHARSET[i])
 			for {
 				var ret []string
 				// 查询可删除列表
