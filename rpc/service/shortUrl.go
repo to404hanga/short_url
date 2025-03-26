@@ -13,7 +13,7 @@ type CachedShortUrlService struct {
 	repo    repository.ShortUrlRepository
 	l       logger.Logger
 	suffix  string
-	weights []int
+	Weights []int
 }
 
 var _ ShortUrlService = (*CachedShortUrlService)(nil)
@@ -23,14 +23,14 @@ func NewCachedShortUrlService(repo repository.ShortUrlRepository, l logger.Logge
 		repo:    repo,
 		l:       l,
 		suffix:  suffix,
-		weights: weights,
+		Weights: weights,
 	}
 }
 
 func (s *CachedShortUrlService) Create(ctx context.Context, originUrl string) (string, error) {
 	baseSuffix := ""
 	for {
-		shortUrl := generator.GenerateShortUrl(originUrl, baseSuffix, s.weights)
+		shortUrl := generator.GenerateShortUrl(originUrl, baseSuffix, s.Weights)
 		err := s.repo.InsertShortUrl(ctx, shortUrl, originUrl)
 		switch err {
 		case nil, repository.ErrUniqueIndexConflict:
