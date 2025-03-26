@@ -26,6 +26,8 @@ services:
   etcd:
     image: "bitnami/etcd:latest"
     restart: always
+    volumes:
+      - "./scripts/etcd_data:/etcd-data"
     environment:
       - ALLOW_NONE_AUTHENTICATION=yes
     ports:
