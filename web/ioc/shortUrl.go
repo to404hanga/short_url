@@ -4,7 +4,6 @@ import (
 	short_url_v1 "short_url/proto/short_url/v1"
 
 	"github.com/spf13/viper"
-	_ "github.com/to404hanga/pkg404/grpcx/balancer/smoothweightedroundrobin"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/naming/resolver"
 	"google.golang.org/grpc"
@@ -27,7 +26,7 @@ func InitShortUrlClient(ecli *clientv3.Client) short_url_v1.ShortUrlServiceClien
 	}
 	opts := []grpc.DialOption{
 		grpc.WithResolvers(rs),
-		grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"smooth_weighted_round_robin": {}}]}`),
+		grpc.WithDefaultServiceConfig(`{"loadBalancingConfig": [{"round_robin": {}}]}`),
 	}
 	if !cfg.Secure {
 		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
