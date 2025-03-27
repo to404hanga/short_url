@@ -2,6 +2,7 @@ package ioc
 
 import (
 	"context"
+	"short_url/web/middlewares"
 	"short_url/web/routes"
 	"strings"
 	"time"
@@ -18,6 +19,9 @@ func InitWebServer(mdls []gin.HandlerFunc, api *routes.ApiHandler, server *route
 	router.Use(mdls...)
 	api.RegisterRoutes(router)
 	server.RegisterRoutes(router)
+	router.GET("/ping", func(ctx *gin.Context) {
+		ctx.String(200, "Pong")
+	})
 
 	return router
 }
@@ -48,6 +52,6 @@ func InitGinMiddleware(l logger.Logger) []gin.HandlerFunc {
 			MaxAge: 12 * time.Hour,
 		}),
 		timeout(),
-		// middlewares.ZapLogger(l),
+		middlewares.ZapLogger(l),
 	}
 }
