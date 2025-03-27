@@ -1,12 +1,14 @@
 package ioc
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"short_url/pkg/generator"
 	"short_url/rpc/repository/dao"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 	"github.com/to404hanga/pkg404/logger"
 	"gorm.io/driver/mysql"
@@ -16,7 +18,7 @@ import (
 	"gorm.io/sharding"
 )
 
-func InitDB(l logger.Logger) *gorm.DB {
+func InitDB(l logger.Logger, cmd redis.Cmdable) *gorm.DB {
 	type Config struct {
 		User                   string `yaml:"user"`
 		Password               string `yaml:"password"`
@@ -76,9 +78,19 @@ func InitDB(l logger.Logger) *gorm.DB {
 
 	// 通过配置文件决定启动时是否初始化数据库
 	if cfg.EnableDBInit {
-		log.Println("Starting database initialization...")
-		dao.InitTables(db)
-		log.Println("Database initialization completed.")
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+		defer cancel()
+		if ok, _ := cmd.SetNX(ctx, "db_init", true, time.Minute).Result(); ok {
+			var rows int64
+			err := db.WithContext(ctx).Model(&dao.Mark{}).Count(&rows).Error
+			if rows == 0 && (err == nil || err.Error() == "Error 1146 (42S02): Table 'short_url.mark' doesn't exist") {
+				go func() {
+					log.Println("Starting database initialization...")
+					dao.InitTables(db)
+					log.Println("Database initialization completed.")
+				}()
+			}
+		}
 	}
 
 	return db

@@ -1,25 +1,19 @@
 package dao
 
 import (
+	"context"
+
 	"gorm.io/gorm"
 )
 
 func InitTables(db *gorm.DB) {
+	db.AutoMigrate(&Mark{})
 	db.AutoMigrate(&ShortUrl{})
+	db.WithContext(context.Background()).Create(&Mark{
+		Inited: true,
+	})
+}
 
-	// // 可行
-	// log.Println("可行")
-	// db.Table("short_url_a").Create(&ShortUrl{
-	// 	ShortUrl:  "abcdef",
-	// 	OriginUrl: "http://example.com",
-	// 	ExpiredAt: -1,
-	// })
-
-	// // 不可行
-	// log.Println("不可行")
-	// db.Create(&ShortUrl{
-	// 	ShortUrl:  "bbcdef",
-	// 	OriginUrl: "http://example.com",
-	// 	ExpiredAt: -1,
-	// })
+type Mark struct {
+	Inited bool `gorm:"type:tinyint(1)"`
 }

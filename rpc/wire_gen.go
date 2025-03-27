@@ -19,7 +19,7 @@ func Init() *App {
 	cmdable := ioc.InitRedis()
 	shortUrlCache := ioc.InitRedisCache(cmdable)
 	logger := ioc.InitLogger()
-	db := ioc.InitDB(logger)
+	db := ioc.InitDB(logger, cmdable)
 	shortUrlDAO := dao.NewGormShortUrlDAO(db, logger)
 	shortUrlRepository := ioc.InitCachedRepository(shortUrlCache, shortUrlDAO, logger)
 	shortUrlService := ioc.InitService(client, shortUrlRepository, logger)
