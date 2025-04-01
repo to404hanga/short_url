@@ -5,19 +5,22 @@ import (
 	short_url_v1 "short_url/proto/short_url/v1"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/sync/singleflight"
 )
 
 type ServerHandler struct {
-	svc     short_url_v1.ShortUrlServiceClient
-	weights []int
+	svc          short_url_v1.ShortUrlServiceClient
+	weights      []int
+	requestGroup singleflight.Group
 }
 
 var _ Handler = (*ServerHandler)(nil)
 
 func NewServerHandler(svc short_url_v1.ShortUrlServiceClient) *ServerHandler {
 	return &ServerHandler{
-		svc:     svc,
-		weights: []int{5, 67, 23, 71, 73, 79},
+		svc:          svc,
+		weights:      []int{5, 67, 23, 71, 73, 79},
+		requestGroup: singleflight.Group{},
 	}
 }
 
@@ -31,12 +34,19 @@ func (h *ServerHandler) Redirect(ctx *gin.Context) {
 		ctx.JSON(404, gin.H{"error": "Short URL not found"})
 		return
 	}
-	resp, err := h.svc.GetOriginUrl(ctx, &short_url_v1.GetOriginUrlRequest{
-		ShortUrl: shortUrl,
+
+	result, err, _ := h.requestGroup.Do(shortUrl, func() (interface{}, error) {
+		resp, err := h.svc.GetOriginUrl(ctx, &short_url_v1.GetOriginUrlRequest{
+			ShortUrl: shortUrl,
+		})
+		if err != nil {
+			return "", err
+		}
+		return resp.GetOriginUrl(), nil
 	})
 	if err != nil {
 		ctx.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
-	ctx.Redirect(301, resp.GetOriginUrl())
+	ctx.Redirect(301, result.(string))
 }
