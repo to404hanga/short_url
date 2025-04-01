@@ -81,7 +81,6 @@ func (c *CachedShortUrlRepository) GetOriginUrlByShortUrl(ctx context.Context, s
 			})
 
 			return originUrl, err
-
 		}
 		c.l.Error("cache.Get failed",
 			logger.Error(err),
