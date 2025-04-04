@@ -12,6 +12,7 @@ import (
 	"github.com/to404hanga/pkg404/logger"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type GormShortUrlDAO struct {
@@ -42,17 +43,28 @@ func (g *GormShortUrlDAO) tableName(shortUrlOrSuffix string) string {
 }
 
 func (g *GormShortUrlDAO) Insert(ctx context.Context, su ShortUrl) error {
-	err := g.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if tx.WithContext(ctx).Table(g.tableName(su.ShortUrl)).Create(&su).Error != nil {
-			var shortUrl ShortUrl
-			if err := tx.WithContext(ctx).Table(g.tableName(su.ShortUrl)).Where("short_url = ?", su.ShortUrl).Find(&shortUrl).Error; err != nil {
+	tableName := g.tableName(su.ShortUrl)
+	err := g.db.WithContext(ctx).Table(tableName).Transaction(func(tx *gorm.DB) error {
+		result := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "short_url"}}, // 唯一索引列
+			DoUpdates: clause.Assignments(map[string]any{}),
+		}).Create(&su)
+
+		if result.Error != nil {
+			return result.Error
+		}
+
+		// 通过 RowsAffected 判断实际操作
+		if result.RowsAffected == 0 {
+			// 冲突发生后的处理逻辑
+			var existing ShortUrl
+			if err := tx.Where("short_url = ?", su.ShortUrl).First(&existing).Error; err != nil {
 				return err
 			}
-			if shortUrl.OriginUrl != su.OriginUrl {
+			if existing.OriginUrl != su.OriginUrl {
 				return ErrPrimaryKeyConflict
-			} else {
-				return ErrUniqueIndexConflict
 			}
+			return ErrUniqueIndexConflict
 		}
 		return nil
 	})
