@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/spf13/viper"
 	"github.com/to404hanga/pkg404/logger"
 )
 
@@ -39,7 +40,7 @@ func timeout() gin.HandlerFunc {
 }
 
 func InitGinMiddleware(l logger.Logger) []gin.HandlerFunc {
-	return []gin.HandlerFunc{
+	hf := []gin.HandlerFunc{
 		cors.New(cors.Config{
 			AllowCredentials: true,
 			AllowHeaders:     []string{"Content-Type"},
@@ -52,6 +53,12 @@ func InitGinMiddleware(l logger.Logger) []gin.HandlerFunc {
 			MaxAge: 12 * time.Hour,
 		}),
 		timeout(),
-		middlewares.ZapLogger(l),
+		// middlewares.ZapLogger(l),
 	}
+
+	if viper.GetString("log.mode") == "dev" {
+		hf = append(hf, middlewares.ZapLogger(l))
+	}
+
+	return hf
 }
