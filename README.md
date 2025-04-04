@@ -14,26 +14,35 @@
 ## 项目目录结构
 
 ```shell
-├─config 配置文件
-├─domain 领域层
-├─ioc 组装层
-├─job 定时任务
-├─log 日志
 ├─pkg 公共包
+│  ├─generator 短链接生成与校验相关
 │  ├─logfile 创建日志文件
 │  ├─sharding 分表算法
 │  └─sign 签名算法
-│     └─epay EPAY 签名算法
-├─repository 存储层
-│  ├─cache 缓存层
-│  └─dao 数据访问对象层
+│     └─epay EPAY签名算法
+├─proto proto定义文件与生成文件
+│  └─short_url short_url.proto生成内容
+├─rpc 对外提供微服务
+│  ├─config 配置文件
+│  ├─grpc 对外提供rpc接口
+│  ├─ioc 组装层
+│  ├─job 定时任务
+│  ├─log 日志
+│  ├─repository 存储层
+│  │  ├─cache 缓存层
+│  │  └─dao 数据访问对象层
+│  └─service 服务层
 ├─scripts 脚本
+│  ├─etcd_data etcd-data挂载目录
 │  ├─jmeter Jmeter压测计划文件
 │  └─mysql Mysql初始化文件
-├─service 服务层
 ├─test 测试文件
-└─web 表现层
-   └─middlewares 中间件
+└─web 对外提供http服务
+   ├─config 配置文件
+   ├─ioc 组装层
+   ├─log 日志
+   ├─middlewares 中间件
+   └─routes 路由层
 ```
 
 ## 使用前
