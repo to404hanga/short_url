@@ -18,17 +18,22 @@ import (
 type GormShortUrlDAO struct {
 	db            *gorm.DB
 	l             logger.Logger
-	batchBuffer   chan ShortUrl  // 缓冲插入请求
-	batchSize     int            // 批量大小
-	flushInterval time.Duration  // 刷新间隔
-	wg            sync.WaitGroup // 用于等待worker完成
-	stopChan      chan struct{}  // 用于停止worker
+	buffer        []ShortUrl      // 环形缓冲区
+	bufferSize    int             // 缓冲区大小
+	readPos       int             // 读取位置
+	writePos      int             // 写入位置
+	batchSize     int             // 批量大小
+	flushInterval time.Duration   // 刷新间隔
+	wg            sync.WaitGroup  // 用于等待worker完成
+	stopChan      chan struct{}   // 用于停止worker
+	flushPool     sync.Pool       // 用于批量处理的slice池
+	flushChan     chan []ShortUrl // 用于异步刷新
+	mu            sync.Mutex      // 保护缓冲区访问
 }
 
 func (g *GormShortUrlDAO) batchWorker() {
 	defer g.wg.Done()
 
-	var batch []ShortUrl
 	ticker := time.NewTicker(g.flushInterval)
 	defer ticker.Stop()
 
@@ -36,29 +41,56 @@ func (g *GormShortUrlDAO) batchWorker() {
 		select {
 		case <-g.stopChan:
 			// 处理剩余请求
-			if len(batch) > 0 {
-				g.flushBatch(context.Background(), batch)
-			}
+			g.flushRemaining()
 			return
 
-		case su := <-g.batchBuffer:
-			batch = append(batch, su)
-			if len(batch) >= g.batchSize {
-				g.flushBatch(context.Background(), batch)
-				batch = nil
-				ticker.Reset(g.flushInterval)
-			}
-
 		case <-ticker.C:
-			if len(batch) > 0 {
-				g.flushBatch(context.Background(), batch)
-				batch = nil
-			}
+			g.flushIfNeeded()
 		}
 	}
 }
 
+func (g *GormShortUrlDAO) flushIfNeeded() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.readPos == g.writePos {
+		return
+	}
+
+	batch := g.getBatch()
+	if len(batch) > 0 {
+		g.flushChan <- batch
+	}
+}
+
+func (g *GormShortUrlDAO) flushRemaining() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	for g.readPos != g.writePos {
+		batch := g.getBatch()
+		if len(batch) > 0 {
+			g.flushChan <- batch
+		}
+	}
+}
+
+func (g *GormShortUrlDAO) getBatch() []ShortUrl {
+	batch := g.flushPool.Get().([]ShortUrl)
+	batch = batch[:0]
+
+	for g.readPos != g.writePos && len(batch) < g.batchSize {
+		batch = append(batch, g.buffer[g.readPos])
+		g.readPos = (g.readPos + 1) % g.bufferSize
+	}
+
+	return batch
+}
+
 func (g *GormShortUrlDAO) flushBatch(ctx context.Context, batch []ShortUrl) {
+	defer g.flushPool.Put(batch)
+
 	// 按表名分组
 	groups := make(map[string][]ShortUrl)
 	for _, su := range batch {
@@ -66,35 +98,43 @@ func (g *GormShortUrlDAO) flushBatch(ctx context.Context, batch []ShortUrl) {
 		groups[table] = append(groups[table], su)
 	}
 
-	// 按表批量插入
-	for table, sus := range groups {
-		g.db.WithContext(ctx).Table(table).Transaction(func(tx *gorm.DB) error {
-			result := tx.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "short_url"}},
-				DoUpdates: clause.Assignments(map[string]any{}),
-			}).Create(&sus)
+	// 使用worker池处理每个表
+	var wg sync.WaitGroup
+	wg.Add(len(groups))
 
-			if result.RowsAffected != int64(len(sus)) {
-				// 处理冲突
-				for i := result.RowsAffected; i < int64(len(sus)); i++ {
-					var existing ShortUrl
-					if err := tx.Where("short_url = ?", sus[i].ShortUrl).First(&existing).Error; err != nil {
-						g.l.Error("batch insert conflict check failed",
-							logger.Error(err),
-							logger.String("short_url", sus[i].ShortUrl))
-						continue
-					}
-					if existing.OriginUrl != sus[i].OriginUrl {
-						g.l.Warn("primary key conflict detected",
-							logger.String("short_url", sus[i].ShortUrl),
-							logger.String("existing_origin_url", existing.OriginUrl),
-							logger.String("new_origin_url", sus[i].OriginUrl))
+	for table, sus := range groups {
+		go func(table string, sus []ShortUrl) {
+			defer wg.Done()
+			g.db.WithContext(ctx).Table(table).Transaction(func(tx *gorm.DB) error {
+				result := tx.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "short_url"}},
+					DoUpdates: clause.Assignments(map[string]any{}),
+				}).Create(&sus)
+
+				if result.RowsAffected != int64(len(sus)) {
+					// 处理冲突
+					for i := result.RowsAffected; i < int64(len(sus)); i++ {
+						var existing ShortUrl
+						if err := tx.Where("short_url = ?", sus[i].ShortUrl).First(&existing).Error; err != nil {
+							g.l.Error("batch insert conflict check failed",
+								logger.Error(err),
+								logger.String("short_url", sus[i].ShortUrl))
+							continue
+						}
+						if existing.OriginUrl != sus[i].OriginUrl {
+							g.l.Warn("primary key conflict detected",
+								logger.String("short_url", sus[i].ShortUrl),
+								logger.String("existing_origin_url", existing.OriginUrl),
+								logger.String("new_origin_url", sus[i].OriginUrl))
+						}
 					}
 				}
-			}
-			return nil
-		})
+				return nil
+			})
+		}(table, sus)
 	}
+
+	wg.Wait()
 }
 
 func (g *GormShortUrlDAO) Close() error {
@@ -115,15 +155,33 @@ func NewGormShortUrlDAO(db *gorm.DB, l logger.Logger) ShortUrlDAO {
 	dao := &GormShortUrlDAO{
 		db:            db,
 		l:             l,
-		batchBuffer:   make(chan ShortUrl, 1000),
+		buffer:        make([]ShortUrl, 2000), // 双倍大小以提供缓冲
+		bufferSize:    2000,
 		batchSize:     1000,
 		flushInterval: 50 * time.Millisecond,
 		stopChan:      make(chan struct{}),
+		flushChan:     make(chan []ShortUrl, 10), // 10个并发刷新
+	}
+
+	// 初始化slice池
+	dao.flushPool.New = func() interface{} {
+		return make([]ShortUrl, 0, dao.batchSize)
 	}
 
 	// 启动批量处理goroutine
 	dao.wg.Add(1)
 	go dao.batchWorker()
+
+	// 启动异步刷新worker
+	for i := 0; i < 5; i++ {
+		go func() {
+			for batch := range dao.flushChan {
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+				dao.flushBatch(ctx, batch)
+				cancel()
+			}
+		}()
+	}
 
 	return dao
 }
@@ -136,12 +194,23 @@ func (g *GormShortUrlDAO) tableName(shortUrlOrSuffix string) string {
 }
 
 func (g *GormShortUrlDAO) Insert(ctx context.Context, su ShortUrl) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case g.batchBuffer <- su:
-		return nil
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	nextPos := (g.writePos + 1) % g.bufferSize
+	if nextPos == g.readPos {
+		return errors.New("buffer full")
 	}
+
+	g.buffer[g.writePos] = su
+	g.writePos = nextPos
+
+	// 如果达到批量大小，立即刷新
+	if (g.writePos-g.readPos+g.bufferSize)%g.bufferSize >= g.batchSize {
+		g.flushIfNeeded()
+	}
+
+	return nil
 }
 
 /*
