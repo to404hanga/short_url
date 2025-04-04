@@ -16,8 +16,91 @@ import (
 )
 
 type GormShortUrlDAO struct {
-	db *gorm.DB
-	l  logger.Logger
+	db            *gorm.DB
+	l             logger.Logger
+	batchBuffer   chan ShortUrl  // 缓冲插入请求
+	batchSize     int            // 批量大小
+	flushInterval time.Duration  // 刷新间隔
+	wg            sync.WaitGroup // 用于等待worker完成
+	stopChan      chan struct{}  // 用于停止worker
+}
+
+func (g *GormShortUrlDAO) batchWorker() {
+	defer g.wg.Done()
+
+	var batch []ShortUrl
+	ticker := time.NewTicker(g.flushInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-g.stopChan:
+			// 处理剩余请求
+			if len(batch) > 0 {
+				g.flushBatch(context.Background(), batch)
+			}
+			return
+
+		case su := <-g.batchBuffer:
+			batch = append(batch, su)
+			if len(batch) >= g.batchSize {
+				g.flushBatch(context.Background(), batch)
+				batch = nil
+				ticker.Reset(g.flushInterval)
+			}
+
+		case <-ticker.C:
+			if len(batch) > 0 {
+				g.flushBatch(context.Background(), batch)
+				batch = nil
+			}
+		}
+	}
+}
+
+func (g *GormShortUrlDAO) flushBatch(ctx context.Context, batch []ShortUrl) {
+	// 按表名分组
+	groups := make(map[string][]ShortUrl)
+	for _, su := range batch {
+		table := g.tableName(su.ShortUrl)
+		groups[table] = append(groups[table], su)
+	}
+
+	// 按表批量插入
+	for table, sus := range groups {
+		g.db.WithContext(ctx).Table(table).Transaction(func(tx *gorm.DB) error {
+			result := tx.Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "short_url"}},
+				DoUpdates: clause.Assignments(map[string]any{}),
+			}).Create(&sus)
+
+			if result.RowsAffected != int64(len(sus)) {
+				// 处理冲突
+				for i := result.RowsAffected; i < int64(len(sus)); i++ {
+					var existing ShortUrl
+					if err := tx.Where("short_url = ?", sus[i].ShortUrl).First(&existing).Error; err != nil {
+						g.l.Error("batch insert conflict check failed",
+							logger.Error(err),
+							logger.String("short_url", sus[i].ShortUrl))
+						continue
+					}
+					if existing.OriginUrl != sus[i].OriginUrl {
+						g.l.Warn("primary key conflict detected",
+							logger.String("short_url", sus[i].ShortUrl),
+							logger.String("existing_origin_url", existing.OriginUrl),
+							logger.String("new_origin_url", sus[i].OriginUrl))
+					}
+				}
+			}
+			return nil
+		})
+	}
+}
+
+func (g *GormShortUrlDAO) Close() error {
+	close(g.stopChan)
+	g.wg.Wait()
+	return nil
 }
 
 var _ ShortUrlDAO = (*GormShortUrlDAO)(nil)
@@ -29,10 +112,20 @@ var (
 )
 
 func NewGormShortUrlDAO(db *gorm.DB, l logger.Logger) ShortUrlDAO {
-	return &GormShortUrlDAO{
-		db: db,
-		l:  l,
+	dao := &GormShortUrlDAO{
+		db:            db,
+		l:             l,
+		batchBuffer:   make(chan ShortUrl, 1000),
+		batchSize:     1000,
+		flushInterval: 50 * time.Millisecond,
+		stopChan:      make(chan struct{}),
 	}
+
+	// 启动批量处理goroutine
+	dao.wg.Add(1)
+	go dao.batchWorker()
+
+	return dao
 }
 
 func (g *GormShortUrlDAO) tableName(shortUrlOrSuffix string) string {
@@ -42,6 +135,17 @@ func (g *GormShortUrlDAO) tableName(shortUrlOrSuffix string) string {
 	return fmt.Sprintf("short_url_%s", string(shortUrlOrSuffix[0]))
 }
 
+func (g *GormShortUrlDAO) Insert(ctx context.Context, su ShortUrl) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case g.batchBuffer <- su:
+		return nil
+	}
+}
+
+/*
+// 原单次插入实现，保留作为参考
 func (g *GormShortUrlDAO) Insert(ctx context.Context, su ShortUrl) error {
 	tableName := g.tableName(su.ShortUrl)
 	err := g.db.WithContext(ctx).Table(tableName).Transaction(func(tx *gorm.DB) error {
@@ -70,6 +174,7 @@ func (g *GormShortUrlDAO) Insert(ctx context.Context, su ShortUrl) error {
 	})
 	return err
 }
+*/
 
 func (g *GormShortUrlDAO) FindByShortUrlWithExpired(ctx context.Context, shortUrl string, now int64) (ShortUrl, error) {
 	var su ShortUrl

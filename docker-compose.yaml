@@ -11,6 +11,11 @@ services:
       - --max_connections=500
     environment:
       MYSQL_ROOT_PASSWORD: "123456"
+      MYSQL_INNODB_BUFFER_POOL_SIZE: "1G"
+      MYSQL_INNODB_LOG_BUFFER_SIZE: "64M"
+      MYSQL_BULK_INSERT_BUFFER_SIZE: "256M" # 批量插入专用内存
+      MYSQL_INNODB_FLUSH_LOG_AT_TRX_COMMIT: "0" # 事务日志刷新策略(0=性能优先，可能会丢失1秒日志)
+      MYSQL_INNODB_AUTOCOMMIT: "0" # 禁用自动提交提升批量效率
     volumes:
       - ./scripts/mysql/:/docker-entrypoint-initdb.d/
     ports:
