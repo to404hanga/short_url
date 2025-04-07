@@ -35,7 +35,8 @@ func InitService(ecli *clientv3.Client, repo repository.ShortUrlRepository, l lo
 	// 		weights = append(weights, i)
 	// 	}
 	// }
-	svc := service.NewCachedShortUrlService(repo, l, cfg.Suffix, []int{5, 67, 23, 71, 73, 79})
+	weights := viper.GetIntSlice("short_url.weights")
+	svc := service.NewCachedShortUrlService(repo, l, cfg.Suffix, weights)
 
 	// // 监听 etcd 键值对的变化并更新 weights
 	// go func() {

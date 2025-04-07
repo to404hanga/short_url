@@ -20,7 +20,7 @@ func Init() *gin.Engine {
 	client := ioc.InitEtcdClient()
 	shortUrlServiceClient := ioc.InitShortUrlClient(client)
 	apiHandler := routes.NewApiHandler(shortUrlServiceClient)
-	serverHandler := routes.NewServerHandler(shortUrlServiceClient)
+	serverHandler := ioc.InitServerHandler(shortUrlServiceClient)
 	engine := ioc.InitWebServer(v, apiHandler, serverHandler)
 	return engine
 }

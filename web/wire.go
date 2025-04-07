@@ -17,7 +17,7 @@ func Init() *gin.Engine {
 		ioc.InitLogger,
 
 		routes.NewApiHandler,
-		routes.NewServerHandler,
+		ioc.InitServerHandler,
 
 		ioc.InitGinMiddleware,
 		ioc.InitWebServer,

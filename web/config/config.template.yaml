@@ -2,7 +2,7 @@ app:
   addr: ":8080"
 
 log:
-  mode: "dev"
+  mode: "prod"
   outputPaths:
     - "./log/log.txt"
   errorOutputPaths:
@@ -17,3 +17,6 @@ grpc:
     shortUrl:
       target: "etcd:///service/short_url"
       Secure: false
+  
+short_url:
+  weights: [1009, 1231, 1031, 1013, 1019, 1021]

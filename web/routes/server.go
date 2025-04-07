@@ -16,10 +16,10 @@ type ServerHandler struct {
 
 var _ Handler = (*ServerHandler)(nil)
 
-func NewServerHandler(svc short_url_v1.ShortUrlServiceClient) *ServerHandler {
+func NewServerHandler(svc short_url_v1.ShortUrlServiceClient, weights []int) *ServerHandler {
 	return &ServerHandler{
 		svc:          svc,
-		weights:      []int{5, 67, 23, 71, 73, 79},
+		weights:      weights,
 		requestGroup: singleflight.Group{},
 	}
 }
